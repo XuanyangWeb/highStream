@@ -1,0 +1,28 @@
+syntax = "proto3";
+package danmaku.v1;
+option java_package = "com.highstream.proto.danmaku.v1";
+option java_multiple_files = true;
+option java_outer_classname = "DanmakuProto";
+option go_package = "highstream/danmaku-service/pb/danmaku/v1;danmakuv1";
+
+message Danmaku {
+  int64 room_id = 1;
+  int64 user_id = 2;
+  string content = 3;
+  int64 ts = 4;
+}
+
+message SendDanmakuRequest {
+  int64 room_id = 1;
+  int64 user_id = 2;
+  string content = 3;
+}
+message SendDanmakuResponse { Danmaku danmaku = 1; }
+
+message SubscribeRequest { int64 room_id = 1; }
+message SubscribeResponse { Danmaku danmaku = 1; }
+
+service DanmakuService {
+  rpc SendDanmaku(SendDanmakuRequest) returns (SendDanmakuResponse);
+  rpc Subscribe(SubscribeRequest) returns (stream SubscribeResponse);
+}

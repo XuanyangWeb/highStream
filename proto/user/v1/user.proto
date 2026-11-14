@@ -1,0 +1,24 @@
+//语法
+syntax = "proto3";
+//包名
+package user.v1;
+//java proto文件包
+option java_package = "com.highstream.proto.user.v1";
+option java_multiple_files = true;
+option java_outer_classname = "UserProto";
+
+//go侧包名 路径；go侧包名
+option go_package = "highstream/live-service/pb/user/v1;userv1";
+
+message User {
+  int64 id = 1;
+  string name = 2;
+  string avatar = 3;
+}
+
+message GetUserRequest { int64 id = 1; }
+message GetUserResponse { User user = 1; }
+
+service UserService {
+  rpc GetUser(GetUserRequest) returns (GetUserResponse);
+}

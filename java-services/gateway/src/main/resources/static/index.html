@@ -1,0 +1,506 @@
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebCam Live Studio</title>
+    <!-- 引入 TailwindCSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        /* 自定义动画 */
+        @keyframes pulse-red {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .recording-dot {
+            animation: pulse-red 1.5s infinite;
+        }
+        .video-container {
+            position: relative;
+            overflow: hidden;
+            background-color: #000;
+        }
+        /* 镜像翻转，符合用户照镜子习惯 */
+        video.mirror {
+            transform: scaleX(-1);
+        }
+        canvas {
+            display: none; /* 隐藏画布，仅用于处理截图 */
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white min-h-screen flex flex-col font-sans">
+
+    <!-- 头部导航 -->
+    <header class="bg-gray-800 border-b border-gray-700 shadow-lg z-10">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <i class="fa-solid fa-video text-blue-500 text-2xl"></i>
+                <h1 class="text-xl font-bold tracking-wide">WebCam Live Studio</h1>
+            </div>
+            <div class="flex items-center space-x-4">
+                <div id="status-indicator" class="flex items-center space-x-2 px-3 py-1 rounded-full bg-gray-700 text-sm">
+                    <span class="w-2 h-2 rounded-full bg-gray-400" id="status-dot"></span>
+                    <span id="status-text">离线</span>
+                </div>
+                <button id="settings-btn" class="p-2 rounded-full hover:bg-gray-700 transition">
+                    <i class="fa-solid fa-gear"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- 主内容区 -->
+    <main class="flex-grow flex flex-col lg:flex-row max-w-7xl mx-auto w-full p-4 gap-6">
+        <section>
+            <h2>1. 创建用户</h2>
+            <input id="userName" placeholder="用户名" value="tester">
+            <button onclick="createUser()">创建</button>
+            <div id="userResult"></div>
+        </section>
+        <!-- 左侧：视频预览区 -->
+        <section class="flex-grow lg:w-2/3 flex flex-col space-y-4">
+            <div class="video-container rounded-xl shadow-2xl border border-gray-700 aspect-video relative group">
+
+                <!-- 视频元素 -->
+                <video id="webcam-video" class="w-full h-full object-cover mirror" autoplay playsinline muted></video>
+                
+                <!-- 覆盖层：未启动时显示 -->
+                <div id="placeholder-overlay" class="absolute inset-0 flex flex-col items-center justify-center bg-gray-800 bg-opacity-90 z-10">
+                    <i class="fa-solid fa-camera-retro text-6xl text-gray-500 mb-4"></i>
+                    <p class="text-gray-400">摄像头未启动</p>
+                    <button id="start-cam-btn" class="mt-4 px-6 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg font-medium transition flex items-center space-x-2">
+                        <i class="fa-solid fa-power-off"></i>
+                        <span>启动摄像头</span>
+                    </button>
+                </div>
+
+                <!-- 覆盖层：录制中指示器 -->
+                <div id="recording-indicator" class="absolute top-4 right-4 hidden items-center space-x-2 bg-black bg-opacity-50 px-3 py-1 rounded-full">
+                    <span class="w-3 h-3 rounded-full bg-red-500 recording-dot"></span>
+                    <span class="text-xs font-bold text-red-500">LIVE</span>
+                </div>
+
+                <!-- 覆盖层：截图预览 (短暂显示) -->
+                <div id="snapshot-preview" class="absolute bottom-4 right-4 w-32 h-24 bg-gray-800 border-2 border-white rounded-lg hidden overflow-hidden shadow-lg transition-all duration-300 transform translate-y-10 opacity-0">
+                    <img id="snapshot-img" src="" alt="截图预览" class="w-full h-full object-cover">
+                </div>
+
+
+
+            </div>
+
+            <!-- 底部控制条 -->
+            <div class="bg-gray-800 rounded-xl p-4 border border-gray-700 flex flex-wrap items-center justify-between gap-4">
+                <div class="flex items-center space-x-4">
+                    <button id="capture-btn" class="p-3 rounded-full bg-gray-700 hover:bg-gray-600 text-white transition disabled:opacity-50 disabled:cursor-not-allowed" disabled title="拍照">
+                        <i class="fa-solid fa-camera text-xl"></i>
+                    </button>
+                    <button id="toggle-mic-btn" class="p-3 rounded-full bg-gray-700 hover:bg-gray-600 text-white transition disabled:opacity-50 disabled:cursor-not-allowed" disabled title="切换麦克风">
+                        <i class="fa-solid fa-microphone text-xl"></i>
+                    </button>
+                </div>
+                
+                <div class="flex items-center space-x-2">
+                    <span class="text-sm text-gray-400">滤镜:</span>
+                    <select id="filter-select" class="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 disabled:opacity-50" disabled>
+                        <option value="none">正常</option>
+                        <option value="grayscale(100%)">黑白</option>
+                        <option value="sepia(100%)">复古</option>
+                        <option value="blur(5px)">模糊</option>
+                        <option value="brightness(150%)">高亮</option>
+                        <option value="contrast(200%)">高对比</option>
+                        <option value="hue-rotate(90deg)">色相旋转</option>
+                    </select>
+                </div>
+            </div>
+        </section>
+        <section>
+            <h2>2. 房间</h2>
+            <input id="roomTitle" placeholder="房间标题" value="第一个直播间">
+            <button onclick="createRoom()">创建房间</button>
+            房间 ID：<input id="roomId" style="width:80px" value="1">
+            <button onclick="startLive()">开播</button>
+            <button onclick="stopLive()">下播</button>
+            <div id="roomResult" class="status"></div>
+            <div id="screen">模拟播放画面（playUrl 仅占位）</div>
+        </section>
+
+        <section>
+            <h2>3. 弹幕（SSE 实时）</h2>
+            <input id="danmakuText" placeholder="说点什么" value="666">
+            <button onclick="sendDanmaku()">发送</button>
+            <button onclick="subscribe()">订阅弹幕</button>
+            <div id="danmakuList"></div>
+        </section>
+        <!-- 右侧：信息与设置面板 -->
+        <aside class="lg:w-1/3 flex flex-col space-y-6">
+            
+            <!-- 设备信息卡片 -->
+            <div class="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-lg">
+                <h2 class="text-lg font-semibold mb-4 flex items-center">
+                    <i class="fa-solid fa-circle-info mr-2 text-blue-400"></i> 流媒体信息
+                </h2>
+                <div class="space-y-3 text-sm">
+                    <div class="flex justify-between border-b border-gray-700 pb-2">
+                        <span class="text-gray-400">分辨率</span>
+                        <span id="info-resolution" class="font-mono text-green-400">-</span>
+                    </div>
+                    <div class="flex justify-between border-b border-gray-700 pb-2">
+                        <span class="text-gray-400">帧率 (FPS)</span>
+                        <span id="info-fps" class="font-mono text-green-400">-</span>
+                    </div>
+                    <div class="flex justify-between border-b border-gray-700 pb-2">
+                        <span class="text-gray-400">设备名称</span>
+                        <span id="info-device" class="font-mono text-gray-200 truncate max-w-[150px]">-</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-400">协议</span>
+                        <span class="font-mono text-blue-400">WebRTC / LocalStream</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 截图历史 -->
+            <div class="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-lg flex-grow">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-lg font-semibold flex items-center">
+                        <i class="fa-solid fa-images mr-2 text-purple-400"></i> 截图历史
+                    </h2>
+                    <button id="clear-snapshots" class="text-xs text-red-400 hover:text-red-300">清空</button>
+                </div>
+                <div id="snapshot-gallery" class="grid grid-cols-2 gap-2 overflow-y-auto max-h-[300px] pr-2">
+                    <p class="text-gray-500 text-sm col-span-2 text-center py-4 italic">暂无截图</p>
+                </div>
+            </div>
+
+        </aside>
+    </main>
+
+    <!-- 隐藏 Canvas 用于处理图像 -->
+    <canvas id="snapshot-canvas"></canvas>
+
+    <script>
+        // DOM 元素引用
+        const videoElement = document.getElementById('webcam-video');
+        const startBtn = document.getElementById('start-cam-btn');
+        const placeholderOverlay = document.getElementById('placeholder-overlay');
+        const captureBtn = document.getElementById('capture-btn');
+        const toggleMicBtn = document.getElementById('toggle-mic-btn');
+        const filterSelect = document.getElementById('filter-select');
+        const statusText = document.getElementById('status-text');
+        const statusDot = document.getElementById('status-dot');
+        const statusIndicator = document.getElementById('status-indicator');
+        const recordingIndicator = document.getElementById('recording-indicator');
+        const snapshotPreview = document.getElementById('snapshot-preview');
+        const snapshotImg = document.getElementById('snapshot-img');
+        const snapshotGallery = document.getElementById('snapshot-gallery');
+        const clearSnapshotsBtn = document.getElementById('clear-snapshots');
+        const canvas = document.getElementById('snapshot-canvas');
+        const ctx = canvas.getContext('2d');
+
+        // 状态变量
+        let localStream = null;
+        let isStreaming = false;
+        let isMuted = false;
+        let snapshots = JSON.parse(localStorage.getItem('webcam_snapshots') || '[]');
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', () => {
+            renderGallery();
+            checkBrowserSupport();
+        });
+
+        // 检查浏览器支持
+        function checkBrowserSupport() {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                alert('您的浏览器不支持访问摄像头。请使用现代浏览器如 Chrome, Firefox, Edge。');
+                startBtn.disabled = true;
+                startBtn.innerText = '不支持';
+            }
+        }
+
+        // 启动摄像头
+        async function startCamera() {
+            try {
+                // 请求视频和音频
+                localStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 },
+                        facingMode: "user" 
+                    }, 
+                    audio: true 
+                });
+
+                videoElement.srcObject = localStream;
+                
+                // 等待视频元数据加载以获取分辨率
+                videoElement.onloadedmetadata = () => {
+                    videoElement.play();
+                    updateUIState(true);
+                    updateStreamInfo(localStream);
+                };
+
+            } catch (err) {
+                console.error("摄像头访问错误:", err);
+                let msg = "无法访问摄像头";
+                if (err.name === 'NotAllowedError') {
+                    msg = "权限被拒绝，请允许摄像头访问";
+                } else if (err.name === 'NotFoundError') {
+                    msg = "未找到摄像头设备";
+                }
+                alert(msg);
+            }
+        }
+
+        // 停止摄像头
+        function stopCamera() {
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+                videoElement.srcObject = null;
+                localStream = null;
+            }
+            updateUIState(false);
+        }
+
+        // 更新 UI 状态
+        function updateUIState(streaming) {
+            isStreaming = streaming;
+            if (streaming) {
+                placeholderOverlay.classList.add('hidden');
+                captureBtn.disabled = false;
+                toggleMicBtn.disabled = false;
+                filterSelect.disabled = false;
+                statusText.innerText = "直播中";
+                statusDot.className = "w-2 h-2 rounded-full bg-green-500";
+                statusIndicator.className = "flex items-center space-x-2 px-3 py-1 rounded-full bg-green-900 text-green-200 text-sm border border-green-700";
+                recordingIndicator.classList.remove('hidden');
+                recordingIndicator.classList.add('flex');
+            } else {
+                placeholderOverlay.classList.remove('hidden');
+                captureBtn.disabled = true;
+                toggleMicBtn.disabled = true;
+                filterSelect.disabled = true;
+                statusText.innerText = "离线";
+                statusDot.className = "w-2 h-2 rounded-full bg-gray-400";
+                statusIndicator.className = "flex items-center space-x-2 px-3 py-1 rounded-full bg-gray-700 text-sm";
+                recordingIndicator.classList.add('hidden');
+                recordingIndicator.classList.remove('flex');
+            }
+        }
+
+        // 更新流媒体信息显示
+        function updateStreamInfo(stream) {
+            const videoTrack = stream.getVideoTracks()[0];
+            const settings = videoTrack.getSettings();
+            
+            document.getElementById('info-resolution').innerText = `${settings.width} x ${settings.height}`;
+            document.getElementById('info-fps').innerText = settings.frameRate ? `${settings.frameRate.toFixed(1)} FPS` : 'N/A';
+            document.getElementById('info-device').innerText = videoTrack.label || '未知设备';
+        }
+
+        // 拍照功能
+        function takeSnapshot() {
+            if (!isStreaming) return;
+
+            // 设置 canvas 尺寸与视频一致
+            canvas.width = videoElement.videoWidth;
+            canvas.height = videoElement.videoHeight;
+
+            // 应用当前滤镜到 Canvas (可选，这里简单处理，实际需手动绘制滤镜效果或直接用 CSS 滤镜后的截图较复杂，此处截取原始帧)
+            // 为了简单演示，我们直接绘制视频帧。若要包含 CSS 滤镜，需要使用 getComputedStyle 并手动在 canvas 上模拟，或者使用 html2canvas 库。
+            // 这里我们截取原始清晰图像。
+            ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+
+            // 转换为 Base64
+            const dataUrl = canvas.toDataURL('image/png');
+            
+            // 保存到历史记录
+            const snapshotObj = {
+                id: Date.now(),
+                url: dataUrl,
+                timestamp: new Date().toLocaleString()
+            };
+            snapshots.unshift(snapshotObj);
+            if (snapshots.length > 10) snapshots.pop(); // 只保留最近10张
+            localStorage.setItem('webcam_snapshots', JSON.stringify(snapshots));
+            
+            renderGallery();
+            showPreview(dataUrl);
+        }
+
+        // 显示临时预览
+        function showPreview(url) {
+            snapshotImg.src = url;
+            snapshotPreview.classList.remove('hidden');
+            // 触发动画
+            setTimeout(() => {
+                snapshotPreview.classList.remove('translate-y-10', 'opacity-0');
+            }, 10);
+            
+            // 3秒后隐藏
+            setTimeout(() => {
+                snapshotPreview.classList.add('translate-y-10', 'opacity-0');
+                setTimeout(() => {
+                    snapshotPreview.classList.add('hidden');
+                }, 300);
+            }, 3000);
+        }
+
+        // 渲染截图画廊
+        function renderGallery() {
+            if (snapshots.length === 0) {
+                snapshotGallery.innerHTML = '<p class="text-gray-500 text-sm col-span-2 text-center py-4 italic">暂无截图</p>';
+                return;
+            }
+
+            snapshotGallery.innerHTML = '';
+            snapshots.forEach((snap, index) => {
+                const div = document.createElement('div');
+                div.className = 'relative group aspect-video bg-gray-700 rounded overflow-hidden border border-gray-600';
+                div.innerHTML = `
+                    <img src="${snap.url}" alt="截图 ${index + 1}" class="w-full h-full object-cover">
+                    <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 transition flex items-center justify-center opacity-0 group-hover:opacity-100">
+                        <a href="${snap.url}" download="snapshot_${snap.id}.png" class="text-white bg-blue-600 p-2 rounded-full hover:bg-blue-500 mx-1" title="下载">
+                            <i class="fa-solid fa-download"></i>
+                        </a>
+                        <button onclick="deleteSnapshot(${index})" class="text-white bg-red-600 p-2 rounded-full hover:bg-red-500 mx-1" title="删除">
+                            <i class="fa-solid fa-trash"></i>
+                        </button>
+                    </div>
+                    <div class="absolute bottom-0 left-0 right-0 bg-black bg-opacity-60 text-xs text-white p-1 truncate">
+                        ${snap.timestamp}
+                    </div>
+                `;
+                snapshotGallery.appendChild(div);
+            });
+        }
+
+        // 删除单个截图
+        window.deleteSnapshot = function(index) {
+            snapshots.splice(index, 1);
+            localStorage.setItem('webcam_snapshots', JSON.stringify(snapshots));
+            renderGallery();
+        };
+
+        // 清空所有截图
+        clearSnapshotsBtn.addEventListener('click', () => {
+            if(confirm('确定要清空所有截图吗？')) {
+                snapshots = [];
+                localStorage.removeItem('webcam_snapshots');
+                renderGallery();
+            }
+        });
+
+        // 事件监听
+        startBtn.addEventListener('click', startCamera);
+        
+        captureBtn.addEventListener('click', takeSnapshot);
+        
+        toggleMicBtn.addEventListener('click', () => {
+            if (localStream) {
+                const audioTrack = localStream.getAudioTracks()[0];
+                if (audioTrack) {
+                    isMuted = !isMuted;
+                    audioTrack.enabled = !isMuted;
+                    toggleMicBtn.innerHTML = isMuted ? '<i class="fa-solid fa-microphone-slash text-xl text-red-400"></i>' : '<i class="fa-solid fa-microphone text-xl"></i>';
+                }
+            }
+        });
+
+        filterSelect.addEventListener('change', (e) => {
+            videoElement.style.filter = e.target.value;
+        });
+
+        // 页面卸载时停止摄像头
+        window.addEventListener('beforeunload', () => {
+            stopCamera();
+        });
+
+        const base = location.origin + '/api';
+
+        async function call(method, path, body) {
+            const res = await fetch(base + path, {
+                method,
+                headers: { 'Content-Type': 'application/json' },
+                body: body ? JSON.stringify(body) : undefined,
+            });
+            const text = await res.text();
+            let data;
+            try { data = JSON.parse(text); } catch { data = text; }
+            if (!res.ok) throw new Error(res.status + ' ' + JSON.stringify(data));
+            return data;
+        }
+
+        let currentUserId = null;
+
+        async function createUser() {
+            try {
+                const user = await call('POST', '/users', { name: document.getElementById('userName').value, avatar: '' });
+                currentUserId = user.id;
+                document.getElementById('userResult').textContent = `用户 #${user.id} ${user.name}`;
+            } catch (e) { document.getElementById('userResult').textContent = '失败：' + e.message; }
+        }
+
+        async function createRoom() {
+            try {
+                const room = await call('POST', '/live/rooms', {
+                    ownerId: currentUserId || 1,
+                    title: document.getElementById('roomTitle').value,
+                });
+                document.getElementById('roomId').value = room.id;
+                document.getElementById('roomResult').textContent = `房间 #${room.id} 状态 ${room.status}`;
+            } catch (e) { document.getElementById('roomResult').textContent = '失败：' + e.message; }
+        }
+
+        async function startLive() {
+            try {
+                const room = await call('POST', `/live/rooms/${document.getElementById('roomId').value}/start`,
+                    { ownerId: currentUserId || 1 });
+                document.getElementById('roomResult').textContent =
+                    `房间 #${room.id} 状态 ${room.status}，playUrl=${room.playUrl}`;
+                document.getElementById('screen').textContent = 'LIVING · ' + room.playUrl;
+            } catch (e) { document.getElementById('roomResult').textContent = '失败：' + e.message; }
+        }
+
+        async function stopLive() {
+            try {
+                const room = await call('POST', `/live/rooms/${document.getElementById('roomId').value}/stop`);
+                document.getElementById('roomResult').textContent = `房间 #${room.id} 状态 ${room.status}`;
+                document.getElementById('screen').textContent = '已下播';
+            } catch (e) { document.getElementById('roomResult').textContent = '失败：' + e.message; }
+        }
+
+        async function sendDanmaku() {
+            try {
+                await call('POST', '/danmaku', {
+                    roomId: Number(document.getElementById('roomId').value),
+                    userId: currentUserId || 2,
+                    content: document.getElementById('danmakuText').value,
+                });
+            } catch (e) { document.getElementById('danmakuList').textContent = '失败：' + e.message; }
+        }
+
+        function subscribe() {
+            const roomId = document.getElementById('roomId').value;
+            const es = new EventSource(base + '/danmaku/sse/' + roomId);
+            es.addEventListener('danmaku', (event) => {
+                const d = JSON.parse(event.data);
+                const line = document.createElement('div');
+                line.textContent = `[用户 ${d.userId}] ${d.content}`;
+                document.getElementById('danmakuList').prepend(line);
+            });
+            es.onerror = () => {
+                const line = document.createElement('div');
+                line.textContent = '（SSE 连接关闭）';
+                document.getElementById('danmakuList').prepend(line);
+                es.close();
+            };
+        }
+    </script>
+</body>
+</html>

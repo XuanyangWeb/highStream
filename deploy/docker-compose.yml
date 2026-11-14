@@ -1,0 +1,33 @@
+name: highstream
+
+services:
+  # Nacos：注册中心 + 配置中心
+  nacos:
+    image: nacos/nacos-server:v2.4.3
+    container_name: highstream-nacos
+    environment:
+      MODE: standalone
+      NACOS_AUTH_ENABLE: "false"
+    ports:
+      - "8848:8848"
+      - "9848:9848"
+      - "9849:9849"
+
+  # MariaDB：用户表与房间表，初始化脚本在 ./sql
+  mariadb:
+    image: mariadb:11.4
+    container_name: highstream-mariadb
+    environment:
+      MARIADB_ROOT_PASSWORD: root
+      MARIADB_DATABASE: highstream
+    ports:
+      - "13306:3306"
+    volumes:
+      - ./sql:/docker-entrypoint-initdb.d:ro
+
+  # Redis：缓存最近 200 条弹幕
+  redis:
+    image: redis:7.4
+    container_name: highstream-redis
+    ports:
+      - "16379:6379"

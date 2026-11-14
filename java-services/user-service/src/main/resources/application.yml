@@ -1,0 +1,41 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: user-service
+  datasource:
+    url: jdbc:mariadb://127.0.0.1:13306/highstream?useUnicode=true&characterEncoding=utf8
+    username: root
+    password: root
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  cloud:
+    nacos:
+      discovery:
+        server-addr: 127.0.0.1:8848
+        ip: 127.0.0.1
+      config:
+        server-addr: 127.0.0.1:8848
+        file-extension: yaml
+  config:
+    import: optional:nacos:user-service.yaml
+
+grpc:
+  server:
+    port: 9091
+  client:
+    live-service:
+      address: static://127.0.0.1:9090
+      negotiation-type: plaintext
+    danmaku-service:
+      address: static://127.0.0.1:9092
+      negotiation-type: plaintext
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
