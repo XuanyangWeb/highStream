@@ -47,7 +47,7 @@ const sendManualMessage = () => {
         console.warn('当前WebSocket未连接，无法发送')
         return
     }
-    const msg = manualMessage.value ?.trim();
+    const msg = manualMessage.value?.trim();
     if (!msg) {
         console.log('消息不能')
     }
@@ -63,12 +63,83 @@ const connect = () => {
 
 //开始推流
 const toggleRecording = () => {
-    isRecording.value = !isRecording.value   
+    isRecording.value = !isRecording.value
+    console.log("当前isRecording的状态：" + isRecording.value)
+    if (isRecording.value) {
+        const videoElement = videoRef;
+        const whipURl = "localhost:8848/room//start"
+        pushWebRTCWithWHIP(whipURl);
+    } else {
+        disconnect()
+    }
+
 }
-const flag = ref(false)
-const localStream = ref(null);   // 存储 MediaStream 对象
-const videoElement = ref(null);  // 视频 DOM 引用
-const isLoading = ref(false);    // 防止重复点击
+
+//开始推送流量的方法
+async function pushWebRTCWithWHIP(whipUrl: string) {
+   
+    console.log("jin  pushWebRTCWithWHIP")
+    // 1. 获取本地摄像头和麦克风流
+    const stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true,
+    });
+
+    console.log(stream.active)
+    console.log("aaaaa")
+    // 2. 创建 PeerConnection（仅推流设为 sendonly）
+    const pc = new RTCPeerConnection({
+        iceServers: [{ urls: "stun:://google.com" }],
+    });
+
+
+    //遍历MediaStream中所有的音频轨道，逐个调用addTrack方法绑定到链接
+    stream.getTracks().forEach((track) => {
+        pc.addTransceiver(track, { direction: "sendonly" });
+    });
+
+    console.log("111绑定完成")
+    // 3. 创建 Offer 并等待 ICE 收集完成（省去逐条发 Candidate 的代码）
+    const offer = await pc.createOffer();
+    //把SDP绑定到本地连接
+    await pc.setLocalDescription(offer);
+
+    console.log("111SDP绑定到本地")
+    await new Promise<void>((resolve) => {
+        if (pc.iceGatheringState === "complete") return resolve();
+        const checkState = () => {
+            if (pc.iceGatheringState === "complete") {
+                pc.removeEventListener("icegatheringstatechange", checkState);
+                resolve();
+            }
+        };
+        pc.addEventListener("icegatheringstatechange", checkState);
+    });
+
+    // 4. 通过一次 HTTP POST 把 SDP 发给后端，换取 Answer
+    const res = await fetch(whipUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/sdp" },
+        body: pc.localDescription!.sdp,
+    });
+
+    if (!res.ok) throw new Error(`推流失败: ${res.status}`);
+
+    //后端的应答报文
+    const answerSdp = await res.text();
+    //设置远程描述
+    //ICE候选交换和媒体传输通道才会真正打通
+    await pc.setRemoteDescription({
+        type: "answer",
+        sdp: answerSdp
+    });
+
+    // 返回停止推流函数
+    return () => {
+        stream.getTracks().forEach((t) => t.stop());
+        pc.close();
+    };
+}
 
 const toggleCamera = () => {
 
@@ -79,25 +150,29 @@ const toggleCamera = () => {
         streamActiveStatus.value = !streamActiveStatus.value
         console.log("开始打开摄像头")
         startCamera()
+
     } else {
         streamActiveStatus.value = !streamActiveStatus.value
         stopCamera()
 
     }
 }
- const checkSupport = () => {
+
+//查看是否支持摄像头
+const checkSupport = () => {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      error.value = '当前浏览器不支持摄像头访问';
-      return false;
+        error.value = '当前浏览器不支持摄像头访问';
+        return false;
     }
     return true;
-  };
+};
 
-const startCamera = async (constraints: MediaStreamConstraints = {video:true}) => {
+//打开摄像头 
+const startCamera = async (constraints: MediaStreamConstraints = { video: true }) => {
 
     console.log("开始检验")
-    if(!checkSupport()) return
-    
+    if (!checkSupport()) return
+
 
     const mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
     console.log("检验成功1")
@@ -105,18 +180,19 @@ const startCamera = async (constraints: MediaStreamConstraints = {video:true}) =
     isActive.value = true;
     error.value = null;
 
-    if(videoRef.value) {
+    if (videoRef.value) {
         videoRef.value.srcObject = mediaStream;
         videoRef.value.play().catch((e) => {
             console.error('视频播放失败', e);
         })
     }
     console.log("检验成功2")
-    
+
 }
 
-const stopCamera =  () => {
-    if(stream.value) {
+//关闭摄像头
+const stopCamera = () => {
+    if (stream.value) {
         //
         stream.value.getTracks().forEach((element) => {
             element.stop();
@@ -124,7 +200,7 @@ const stopCamera =  () => {
         stream.value = null;
     }
 
-    if(videoRef.value) {
+    if (videoRef.value) {
         videoRef.value.srcObject = null;
     }
     isActive.value = false;
@@ -205,8 +281,8 @@ const clearLogs = () => {
                         </div>
 
                         <div class="relative aspect-video bg-black group">
-                            <video ref="videoElement" autoplay playsinline muted
-                                class="w-full h-full object-cover"></video>
+                            <video ref="videoRef" autoplay playsinline muted
+                                class="absolute inset-0 w-full h-full object-cover"></video>
 
                             <!-- 覆盖层：未开启摄像头时显示 -->
                             <div v-if="!streamActiveStatus"
@@ -241,8 +317,7 @@ const clearLogs = () => {
                                 streamActive = false 未打开摄像头
                                 打开摄像头 并且 不connected
                             -->
-                            <button @click="toggleRecording"
-                                :disabled="!streamActive"
+                            <button @click="toggleRecording" :disabled="!streamActive"
                                 :class="isRecording ? 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50' : ' bg-red-500 text-white hover:bg-red-600 shadow-red-200'"
                                 class="px-5 py-2.5 rounded-lg font-medium transition-all duration-200 flex items-center gap-2 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed">
                                 <i :class="isRecording ? 'fa-stop' : 'fa-microphone'"></i>
@@ -326,7 +401,8 @@ const clearLogs = () => {
                             <div class="flex gap-2">
                                 <input type="text" v-model="manualMessage" placeholder="发送消息..."
                                     class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all">
-                                <button @click="sendManualMessage" :disabled="connectionStatus !== 'connected' && !manualMessage.trim()"
+                                <button @click="sendManualMessage"
+                                    :disabled="connectionStatus !== 'connected' && !manualMessage.trim()"
                                     class="bg-indigo-600 text-white px-3 py-2 rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
                                     <i class="fa-solid fa-paper-plane">Go</i>
                                 </button>

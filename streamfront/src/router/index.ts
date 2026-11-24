@@ -2,6 +2,7 @@ import { createRouter , createWebHistory , type RouteRecordRaw } from 'vue-route
 
 //确保页面路径正确
 import Home from "../views/Home.vue";
+import Live from '../views/Live.vue';
 
 //定义路由表，一个item一个页面
 const routes:Array<RouteRecordRaw>= [
@@ -10,6 +11,10 @@ const routes:Array<RouteRecordRaw>= [
         path:'/',
         name:'Home',
         component:Home
+    },{
+        path: '/live',
+        name: 'live',
+        component: Live
     }
 ]
 

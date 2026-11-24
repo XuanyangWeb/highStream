@@ -1,0 +1,300 @@
+<script setup lang="ts">
+import { ref } from 'vue';
+
+// 1. 任务数据模型
+// const tasks = ref([
+//     { id: '1', title: '体验 Tailwind v4 新特性', isCompleted: false },
+//     { id: '2', title: '掌握 Composition API', isCompleted: true }
+// ]);
+const manualMessage = ref("")
+const statusColorClass = {
+    'connected': 'text-green-600',
+    'connecting': 'text-yellow-600',
+    'error': 'text-red-600',
+    'disconnected': 'text-slate-500'
+}
+const frameCount = ref(0)
+const connectionStatus = ref('connected')
+const isRecording = ref<boolean>(false)
+//摄像头
+const videoRef = ref<HTMLVideoElement | null>(null)
+const stream = ref<MediaStream | null>(null)
+const isActive = ref(false)
+
+const streamActive = ref(false)
+const streamActiveStatus = ref(false)
+const error = ref<string | null>(null)
+
+//const inputText = ref('')
+const receivedMessages = ref([
+    // 初始可以放一些测试数据，结构需与模板中使用的字段一致
+    {
+        time: '10:00:01',
+        data: 'WebSocket 连接成功'
+    },
+    {
+        time: '10:05:23',
+        data: '收到服务器推送的消息内容'
+    }
+]);
+const wsUrl = ref('sdf')
+
+
+//发送弹幕
+const sendManualMessage = () => {
+    // 在这里编写点击后要执行的逻辑，比如你可以做二次校验、组装消息
+    if (connectionStatus.value !== 'connecting') {
+        console.warn('当前WebSocket未连接，无法发送')
+        return
+    }
+    const msg = manualMessage.value ?.trim();
+    if (!msg) {
+        console.log('消息不能')
+    }
+}
+//断连
+const disconnect = () => {
+
+}
+//链接
+const connect = () => {
+
+}
+
+//开始推流
+const toggleRecording = () => {
+    isRecording.value = !isRecording.value   
+}
+
+
+
+const toggleCamera = () => {
+
+    streamActive.value = !streamActive.value
+    //关闭摄像头 默认false -已开启
+    if (streamActive.value) {
+        //页面中央
+        streamActiveStatus.value = !streamActiveStatus.value
+        console.log("开始打开摄像头")
+        startCamera()
+    } else {
+        streamActiveStatus.value = !streamActiveStatus.value
+        stopCamera()
+
+    }
+}
+ const checkSupport = () => {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      error.value = '当前浏览器不支持摄像头访问';
+      return false;
+    }
+    return true;
+  };
+
+const startCamera = async (constraints: MediaStreamConstraints = {video:true}) => {
+
+    console.log("开始检验")
+    if(!checkSupport()) return
+    
+
+    const mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+    console.log("检验成功1")
+    stream.value = mediaStream;
+    isActive.value = true;
+    error.value = null;
+
+    if(videoRef.value) {
+        videoRef.value.srcObject = mediaStream;
+        videoRef.value.play().catch((e) => {
+            console.error('视频播放失败', e);
+        })
+    }
+    console.log("检验成功2")
+    
+}
+
+const stopCamera =  () => {
+    if(stream.value) {
+        //
+        stream.value.getTracks().forEach((element) => {
+            element.stop();
+        });
+        stream.value = null;
+    }
+
+    if(videoRef.value) {
+        videoRef.value.srcObject = null;
+    }
+    isActive.value = false;
+
+}
+const clearLogs = () => {
+
+}
+
+</script>
+
+
+<template>
+    <div class="min-h-screen flex flex-col">
+
+        <!--<header class="bg-linear-to-br from-blue-600 to-indigo-700 p-8 text-white">
+            <h1 class="text-3xl font-black tracking-tight">HighStream</h1>
+        </header>
+    -->
+        <header class="bg-linear-to-br from-blue-600 to-indigo-700 p-8 text-white">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <h1 class="text-3xl font-black tracking-tight">HighStream</h1>
+                </div>
+                <div class="flex items-center gap-4">
+                    <span class="text-sm text-slate-500 hidden sm:inline-block">WebSocket 实时通讯演示</span>
+                    <a href="#" class="text-slate-400 hover:text-indigo-600 transition-colors">
+                        <i class="fa-solid fa-gear"></i>
+                    </a>
+                </div>
+            </div>
+        </header>
+        <main class="grow container mx-auto px-4 py-8 max-w-6xl">
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+
+                <!-- 左侧：控制与视频区域 -->
+                <div class="lg:col-span-2 space-y-6">
+
+                    <!-- 视频预览卡片 -->
+                    <div class="bg-white rounded-2xl shadow-lg overflow-hidden border border-slate-100">
+                        <div class="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                            
+                
+                        </div>
+
+                        <div class="relative aspect-video bg-black group">
+                            <video ref="videoRef" autoplay playsinline muted
+                                class="absolute inset-0 w-full h-full object-cover"></video>
+
+                            <!-- 覆盖层：未开启摄像头时显示 -->
+                            <div v-if="!streamActiveStatus"
+                                class="absolute inset-0 flex flex-col items-center justify-center text-slate-400 bg-slate-900/80 backdrop-blur-sm">
+                                <i class="fa-solid fa-camera-slash text-4xl mb-3 opacity-50"></i>
+                                <p class="text-sm">未开始</p>
+                            </div>
+
+                            <!-- 覆盖层：连接错误时显示 -->
+                            <div v-if="connectionStatus === 'error'"
+                                class="absolute inset-0 flex flex-col items-center justify-center text-white bg-red-900/80 backdrop-blur-sm z-10">
+                                <i class="fa-solid fa-triangle-exclamation text-4xl mb-3"></i>
+                                <p class="text-sm font-medium">WebSocket 连接失败</p>
+                                <button @click="connect"
+                                    class="mt-4 px-4 py-2 bg-white text-red-900 rounded-lg text-sm font-bold hover:bg-red-50 transition">
+                                    重试连接
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- 控制按钮栏 -->
+                        <div
+                            class="p-4 bg-white flex flex-wrap gap-3 justify-center sm:justify-start border-t border-slate-100">
+                            <input type="text" v-model="manualMessage" placeholder="发送弹幕..."
+                                    class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all">
+                                <button @click="sendManualMessage" :disabled="connectionStatus !== 'connected' && !manualMessage.trim()"
+                                    class="bg-indigo-600 text-white px-3 py-2 rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                                    <i class="fa-solid fa-paper-plane">Go</i>
+                                </button>
+                        
+                        </div>
+                    </div>
+
+                    <!-- 技术参数展示 -->
+                    <div class="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
+                        <h3 class="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">会话信息</h3>
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div class="space-y-1">
+                                <p class="text-xs text-slate-500">连接状态</p>
+                                <p class="font-mono text-sm font-semibold" :class="statusColorClass">{{
+                                    connectionStatus.toUpperCase() }}</p>
+                            </div>
+                            <div class="space-y-1">
+                                <p class="text-xs text-slate-500">媒体轨道</p>
+                                <p class="font-mono text-sm font-semibold text-slate-700">{{ streamActive ? 'ACTIVE' :
+                                    'INACTIVE' }}</p>
+                            </div>
+                            <div class="space-y-1">
+                                <p class="text-xs text-slate-500">发送帧数</p>
+                                <p class="font-mono text-sm font-semibold text-slate-700">{{ frameCount }}</p>
+                            </div>
+                            <div class="space-y-1">
+                                <p class="text-xs text-slate-500">接收消息</p>
+                                <p class="font-mono text-sm font-semibold text-slate-700">{{ receivedMessages.length }}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 右侧：消息日志区域 -->
+                <div class="lg:col-span-1">
+                    <div class="bg-white rounded-2xl shadow-lg border border-slate-100 h-150 flex flex-col">
+                        <div class="p-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
+                            <h2 class="font-semibold text-slate-700 flex items-center gap-2">
+                                <i class="fa-solid fa-list-ul text-indigo-500"></i>
+                                实时消息日志
+                            </h2>
+                            <button @click="clearLogs"
+                                class="text-xs text-slate-400 hover:text-red-500 transition-colors">
+                                <i class="fa-solid fa-trash-can mr-1"></i>清空
+                            </button>
+                        </div>
+
+                        <div class="grow overflow-y-auto p-4 space-y-3 bg-slate-50/30" ref="logContainer">
+                            <div v-if="receivedMessages.length === 0"
+                                class="h-full flex flex-col items-center justify-center text-slate-400 opacity-60">
+                                <i class="fa-regular fa-comments text-3xl mb-2"></i>
+                                <p class="text-sm">暂无消息记录</p>
+                            </div>
+
+                            <transition-group name="list" tag="div" class="space-y-3">
+                                <div v-for="(msg, index) in receivedMessages" :key="index"
+                                    class="bg-white p-3 rounded-lg border border-slate-100 shadow-sm text-sm animate-in fade-in slide-in-from-bottom-2 duration-300">
+                                    <div class="flex justify-between items-start mb-1">
+                                        <span
+                                            class="text-xs font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">SERVER</span>
+                                        <span class="text-xs text-slate-400 font-mono">{{ msg.time }}</span>
+                                    </div>
+                                    <p class="text-slate-700 wrapper-break-word">{{ msg.data }}</p>
+                                </div>
+                            </transition-group>
+                        </div>
+
+                        <!-- 底部输入模拟（可选，用于测试双向通信） -->
+                        <div class="p-3 border-t border-slate-100 bg-white">
+                            <div class="flex gap-2">
+                                <input type="text" v-model="manualMessage" placeholder="发送消息..."
+                                    class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all">
+                                <button @click="sendManualMessage" :disabled="connectionStatus !== 'connected' && !manualMessage.trim()"
+                                    class="bg-indigo-600 text-white px-3 py-2 rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                                    <i class="fa-solid fa-paper-plane">Go</i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+    </div>
+</template>
+
+<style scoped>
+/* 列表过渡动画 */
+.list-enter-active,
+.list-leave-active {
+    transition: all 0.4s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+}
+
+.list-enter-from,
+.list-leave-to {
+    opacity: 0;
+    transform: translateX(30px);
+}
+</style>
